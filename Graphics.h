@@ -10,6 +10,8 @@
 
 namespace Graphics
 {
+	
+
 	// --- CONSTANTS ---
 	const unsigned int NumBackBuffers = 2;
 	// --- GLOBAL VARS ---
@@ -58,4 +60,14 @@ namespace Graphics
 	void ResetAllocatorAndCommandList();
 	void CloseAndExecuteCommandList();
 	void WaitForGPU();
+
+	// Maximum number of constant buffers, assuming each buffer
+	// is 256 bytes or less. Larger buffers are fine, but will
+	// result in fewer buffers in use at any time
+	const unsigned int maxConstantBuffers = 1000;
+	inline Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> CBVSRVDescriptorHeap;
+	inline Microsoft::WRL::ComPtr<ID3D12Resource> CBUploadHeap;
+	D3D12_GPU_DESCRIPTOR_HANDLE FillNextConstantBufferAndGetGPUDescriptorHandle(
+		void* data,
+		unsigned int dataSizeInBytes);
 }
