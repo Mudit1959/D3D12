@@ -1,7 +1,8 @@
 #include "Entity.h"
 
-Entity::Entity(std::shared_ptr<Mesh> mesh) 
+Entity::Entity(std::shared_ptr<Mesh> inMesh) 
 {
+	mesh = inMesh;
 }
 
 std::shared_ptr<Mesh> Entity::GetMesh() { return mesh; }

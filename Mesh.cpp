@@ -1,13 +1,17 @@
 #include "Mesh.h"
 
 
-Mesh::Mesh(Vertex* v, int vCount, unsigned int* i, int iCount)
+Mesh::Mesh(const char* n, Vertex* v, int vCount, unsigned int* i, int iCount)
 {
+	name = n;
+	
 	Mesh::CreateBuffers(v, vCount, i, iCount);
 }
 
-Mesh::Mesh(const char* objFilePath)
+Mesh::Mesh(const char* n, const char* objFilePath)
 {
+	name = n;
+
 	// Author: Chris Cascioli
 	// Purpose: Basic .OBJ 3D model loading, supporting positions, uvs and normals
 	// 
@@ -273,25 +277,32 @@ void Mesh::CreateBuffers(Vertex* v, int vCount, unsigned int* i, int iCount)
 {
 	vertexCount = vCount;
 	indexCount = iCount;
-	Graphics::CreateStaticBuffer(sizeof(Vertex), sizeof(Vertex) * vCount, v);
-	Graphics::CreateStaticBuffer(sizeof(unsigned int), sizeof(unsigned int) * iCount, i);
+
+	CalculateTangents(v, vCount, i, iCount);
+
+	vertexBuffer = Graphics::CreateStaticBuffer(sizeof(Vertex), vCount, v);
+	indexBuffer = Graphics::CreateStaticBuffer(sizeof(unsigned int), iCount, i);
 
 	// Set up the views
-	vbView.StrideInBytes = sizeof(Vertex);
-	vbView.SizeInBytes = sizeof(Vertex) * vCount;
+	vbView.StrideInBytes = (UINT)sizeof(Vertex);
+	vbView.SizeInBytes = (UINT)sizeof(Vertex) * vCount;
 	vbView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+
 	ibView.Format = DXGI_FORMAT_R32_UINT;
-	ibView.SizeInBytes = sizeof(unsigned int) * iCount;
+	ibView.SizeInBytes = (UINT)(sizeof(unsigned int) * iCount);
 	ibView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
 }
 
 
 Mesh::~Mesh() {}
 
+const char* Mesh::GetName() { return name; }
 Microsoft::WRL::ComPtr<ID3D12Resource> Mesh::GetVertexBuffer() { return vertexBuffer; };
 Microsoft::WRL::ComPtr<ID3D12Resource> Mesh::GetIndexBuffer() { return indexBuffer; };
 int Mesh::GetIndexCount() { return indexCount; }
 int Mesh::GetVertexCount() { return vertexCount; }
+D3D12_VERTEX_BUFFER_VIEW Mesh::GetVBView() { return vbView; }
+D3D12_INDEX_BUFFER_VIEW Mesh::GetIBView() { return ibView; }
 
 // --------------------------------------------------------
 // Author: Chris Cascioli

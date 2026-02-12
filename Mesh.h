@@ -29,16 +29,25 @@ class Mesh
 public:
 
 	// ~ Constructor, Copy Constructor, Copy Assignment, Destructor
-	Mesh(Vertex* v, int vCount, unsigned int* i, int iCount); // Constructor
-	Mesh(const char* objFilePath);
-	void CreateBuffers(Vertex* v, int vCount, unsigned int* i, int iCount);
+	Mesh(const char* name, Vertex* v, int vCount, unsigned int* i, int iCount); // Constructor
+	Mesh(const char* name, const char* objFilePath);
+
+	void CreateBuffers(Vertex* verts, int numVerts, unsigned int* indices, int numIndices);
+
 	//Mesh(const Mesh& other); // Copy Constructor
 	//Mesh& operator= (const Mesh& other); // Copy Assignment
 	~Mesh();
+	const char* GetName();
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetVertexBuffer();
 	Microsoft::WRL::ComPtr<ID3D12Resource> GetIndexBuffer();
+
+	D3D12_VERTEX_BUFFER_VIEW GetVBView();
+	D3D12_INDEX_BUFFER_VIEW GetIBView();
+	
+
 	void CalculateTangents(Vertex* verts, int numVerts, unsigned int* indices, int numIndices);
+	
 	int GetIndexCount();
 	int GetVertexCount();
 	
@@ -48,5 +57,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer; // Contains all the indices - drawn in groups of 3 (triangle drawing mode)
 	D3D12_VERTEX_BUFFER_VIEW vbView;
 	D3D12_INDEX_BUFFER_VIEW ibView;
+	const char* name;
 	int indexCount, vertexCount;
 };

@@ -4,6 +4,9 @@
 #include "Input.h"
 #include "PathHelpers.h"
 #include "Window.h"
+#include "Mesh.h"
+#include "Entity.h"
+#include "Camera.h"
 
 #include <DirectXMath.h>
 
@@ -14,6 +17,8 @@
 // For the DirectX Math library
 using namespace DirectX;
 
+std::vector<std::shared_ptr<Entity>> entities;
+std::shared_ptr<Camera> camera;
 // --------------------------------------------------------
 // The constructor is called after the window and graphics API
 // are initialized but before the game loop begins
@@ -22,6 +27,8 @@ Game::Game()
 {
 	CreateRootSigAndPipelineState();
 	CreateGeometry();
+
+	camera = std::make_shared<Camera>(0, 0, -10.0f, Window::AspectRatio(), true);
 }
 
 
@@ -193,60 +200,24 @@ void Game::CreateRootSigAndPipelineState()
 // --------------------------------------------------------
 void Game::CreateGeometry()
 {
-	// Create some temporary variables to represent colors
-	// - Not necessary, just makes things more readable
-	XMFLOAT4 red = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 green = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 blue = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
+	std::shared_ptr<Mesh> cube = std::make_shared<Mesh>("Cube", FixPath("../../Assets/Meshes/cube.obj").c_str());
+	std::shared_ptr<Mesh> cylinder = std::make_shared<Mesh>("Cylinder", FixPath("../../Assets/Meshes/cylinder.obj").c_str());
+	std::shared_ptr<Mesh> helix = std::make_shared<Mesh>("Helix", FixPath("../../Assets/Meshes/helix.obj").c_str());
+	std::shared_ptr<Mesh> plane = std::make_shared<Mesh>("Plane", FixPath("../../Assets/Meshes/quad.obj").c_str());
+	std::shared_ptr<Mesh> quad = std::make_shared<Mesh>("Quad", FixPath("../../Assets/Meshes/quad_double_sided.obj").c_str());
+	std::shared_ptr<Mesh> sphere = std::make_shared<Mesh>("Sphere", FixPath("../../Assets/Meshes/sphere.obj").c_str());
+	std::shared_ptr<Mesh> torus = std::make_shared<Mesh>("Torus", FixPath("../../Assets/Meshes/torus.obj").c_str());
 
-	// Set up the vertices of the triangle we would like to draw
-	// - We're going to copy this array, exactly as it exists in CPU memory
-	//    over to a Direct3D-controlled data structure on the GPU (the vertex buffer)
-	// - Note: Since we don't have a camera or really any concept of
-	//    a "3d world" yet, we're simply describing positions within the
-	//    bounds of how the rasterizer sees our screen: [-1 to +1] on X and Y
-	// - This means (0,0) is at the very center of the screen.
-	// - These are known as "Normalized Device Coordinates" or "Homogeneous 
-	//    Screen Coords", which are ways to describe a position without
-	//    knowing the exact size (in pixels) of the image/window/etc.  
-	// - Long story short: Resizing the window also resizes the triangle,
-	//    since we're describing the triangle in terms of the window itself
-	Vertex vertices[] =
-	{
-		{ XMFLOAT3(+0.0f, +0.5f, +0.0f), red },
-		{ XMFLOAT3(+0.5f, -0.5f, +0.0f), blue },
-		{ XMFLOAT3(-0.5f, -0.5f, +0.0f), green },
-	};
+	entities.push_back(std::make_shared<Entity>(helix));
+	entities.push_back(std::make_shared<Entity>(sphere));
+	entities.push_back(std::make_shared<Entity>(torus));
 
-	// Set up indices, which tell us which vertices to use and in which order
-	// - This is redundant for just 3 vertices, but will be more useful later
-	// - Indices are technically not required if the vertices are in the buffer 
-	//    in the correct order and each one will be used exactly once
-	// - But just to see how it's done...
-	unsigned int indices[] = { 0, 1, 2 };
+	entities[0]->GetTransform()->SetPosition(0, 0, 0);
 
+	entities[1]->GetTransform()->SetPosition(-3, 0, 0);
 
-	// Create a VERTEX BUFFER
-	// - This holds the vertex data of triangles for a single object
-	// - This buffer is created on the GPU, which is where the data needs to
-	//    be if we want the GPU to act on it (as in: draw it to the screen)
+	entities[2]->GetTransform()->SetPosition(3, 0, 0);
 
-	// Create an INDEX BUFFER
-	// - This holds indices to elements in the vertex buffer
-	// - This is most useful when vertices are shared among neighboring triangles
-	// - This buffer is created on the GPU, which is where the data needs to
-	//    be if we want the GPU to act on it (as in: draw it to the screen)
-
-	// Create the two buffers
-	vertexBuffer = Graphics::CreateStaticBuffer(sizeof(Vertex), ARRAYSIZE(vertices), vertices);
-	indexBuffer = Graphics::CreateStaticBuffer(sizeof(unsigned int), ARRAYSIZE(indices), indices);
-	// Set up the views
-	vbView.StrideInBytes = sizeof(Vertex);
-	vbView.SizeInBytes = sizeof(Vertex) * ARRAYSIZE(vertices);
-	vbView.BufferLocation = vertexBuffer -> GetGPUVirtualAddress();
-	ibView.Format = DXGI_FORMAT_R32_UINT;
-	ibView.SizeInBytes = sizeof(unsigned int) * ARRAYSIZE(indices);
-	ibView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
 }
 
 
@@ -278,6 +249,8 @@ void Game::OnResize()
 		scissorRect.right = Window::Width();
 		scissorRect.bottom = Window::Height();
 	}
+
+	if (camera != NULL) { camera->UpdateProjMatrix(Window::AspectRatio()); }
 }
 
 
@@ -289,6 +262,16 @@ void Game::Update(float deltaTime, float totalTime)
 	// Example input checking: Quit if the escape key is pressed
 	if (Input::KeyDown(VK_ESCAPE))
 		Window::Quit();
+
+	camera->Update(deltaTime);
+	
+	//"auto& to meaningfully modify items in a sequence", such as a vector -> https://stackoverflow.com/questions/29859796/c-auto-vs-auto
+	for (auto& e : entities) 
+	{
+		e->GetTransform()->Rotate(0, deltaTime, 0);
+	}
+
+	
 }
 
 
@@ -333,14 +316,40 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::CommandList -> SetPipelineState(pipelineState.Get());
 		// Root sig (must happen before root descriptor table)
 		Graphics::CommandList -> SetGraphicsRootSignature(rootSignature.Get());
+		
 		// Set up other commands for rendering
 		Graphics::CommandList -> OMSetRenderTargets(
 		1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true , &Graphics::DSVHandle);
+
+		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
 		Graphics::CommandList -> RSSetViewports(1, &viewport);
 		Graphics::CommandList -> RSSetScissorRects(1, &scissorRect);
-		Graphics::CommandList -> IASetVertexBuffers(0, 1, &vbView);
-		Graphics::CommandList -> IASetIndexBuffer(&ibView);
-		Graphics::CommandList -> IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		Graphics::CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		for (auto& e : entities) 
+		{
+			VSConstants vsData = {};
+			vsData.world = e->GetTransform()->GetWorldMatrix();
+			vsData.view = camera->GetView();
+			vsData.proj = camera->GetProj();
+
+			D3D12_GPU_DESCRIPTOR_HANDLE vsDataInCBHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(
+				(void*)&vsData, sizeof(VSConstants)
+			);
+
+			Graphics::CommandList->SetGraphicsRootDescriptorTable(0, vsDataInCBHandle);
+
+			std::shared_ptr<Mesh> mesh = e->GetMesh();
+			D3D12_VERTEX_BUFFER_VIEW vbView = mesh->GetVBView();
+			D3D12_INDEX_BUFFER_VIEW ibView = mesh->GetIBView();
+
+			Graphics::CommandList->IASetVertexBuffers(0, 1, &vbView);
+			Graphics::CommandList->IASetIndexBuffer(&ibView);
+
+			Graphics::CommandList->DrawIndexedInstanced((UINT)mesh->GetIndexCount(), 1, 0, 0, 0);
+		}
+		
+		
 		// Draw
 		Graphics::CommandList -> DrawIndexedInstanced(3, 1, 0, 0, 0);
 	}
