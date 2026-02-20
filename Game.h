@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 #include "Camera.h"
+#include "Material.h"
 
 class Game
 {
@@ -23,6 +24,7 @@ private:
 	// Initialization helper methods - feel free to customize, combine, remove, etc.
 	void CreateRootSigAndPipelineState();
 	void CreateGeometry();
+	void CreateMaterials();
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the

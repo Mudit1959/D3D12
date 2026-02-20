@@ -21,6 +21,7 @@ struct VertexShaderInput
 cbuffer VSConstants : register(b0)
 {
     float4x4 world;
+    float4x4 worldInv;
     float4x4 view;
     float4x4 proj;
 }
@@ -35,7 +36,7 @@ cbuffer VSConstants : register(b0)
 VertexToPixel main( VertexShaderInput input )
 {
 	// Set up output struct
-	VertexToPixel output;
+    VertexToPixel output;
 
 	// Here we're essentially passing the input position directly through to the next
 	// stage (rasterizer), though it needs to be a 4-component vector now.  
@@ -45,11 +46,20 @@ VertexToPixel main( VertexShaderInput input )
 	// - Each of these components is then automatically divided by the W component, 
 	//   which we're leaving at 1.0 for now (this is more useful when dealing with 
 	//   a perspective projection matrix, which we'll get to in the future).
-	
     float4x4 wvp = mul(proj, mul(view, world));
     output.screenPosition = mul(wvp, float4(input.localPosition, 1.0f));
+    output.normal = mul((float3x3) worldInv, input.Normal);
+    output.tangent = mul((float3x3) world, input.Normal);
+    output.worldPos = mul(world, float4(input.localPosition, 1.0f)).xyz;
+    output.uv = input.UV;
+	
+
+	// Pass the color through 
+	// - The values will be interpolated per-pixel by the rasterizer
+	// - We don't need to alter it here, but we do need to send it to the pixel shader
+	//output.color = colourTint;
 
 	// Whatever we return will make its way through the pipeline to the
 	// next programmable stage we're using (the pixel shader for now)
-	return output;
+    return output;
 }

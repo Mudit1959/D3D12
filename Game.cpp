@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "Graphics.h"
+#include "BufferStructs.h"
 #include "Vertex.h"
 #include "Input.h"
 #include "PathHelpers.h"
@@ -18,6 +19,7 @@
 using namespace DirectX;
 
 std::vector<std::shared_ptr<Entity>> entities;
+std::shared_ptr<Material> wood, diamond, metal46, metal49;
 std::shared_ptr<Camera> camera;
 // --------------------------------------------------------
 // The constructor is called after the window and graphics API
@@ -27,6 +29,7 @@ Game::Game()
 {
 	CreateRootSigAndPipelineState();
 	CreateGeometry();
+	
 
 	camera = std::make_shared<Camera>(0, 0, -10.0f, Window::AspectRatio(), true);
 }
@@ -89,26 +92,59 @@ void Game::CreateRootSigAndPipelineState()
 	}
 	// Root Signature
 	{
-		// Define a table of CBV's (constant buffer views)
-		D3D12_DESCRIPTOR_RANGE cbvTable = {};
-		cbvTable.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-		cbvTable.NumDescriptors = 1;
-		cbvTable.BaseShaderRegister = 0;
-		cbvTable.RegisterSpace = 0;
-		cbvTable.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-		// Define the root parameter
-		D3D12_ROOT_PARAMETER rootParam = {};
-		rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-		rootParam.DescriptorTable.NumDescriptorRanges = 1;
-		rootParam.DescriptorTable.pDescriptorRanges = &cbvTable;
-		// Describe the overall the root signature
+		// Define a range of CBV's (constant buffer views) for VERTEX SHADER
+		D3D12_DESCRIPTOR_RANGE cbvRangeVS = {};
+		cbvRangeVS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvRangeVS.NumDescriptors = 1;
+		cbvRangeVS.BaseShaderRegister = 0;
+		cbvRangeVS.RegisterSpace = 0;
+		cbvRangeVS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+		// Define a range of CBV's (constant buffer views) for PIXEL SHADER
+		D3D12_DESCRIPTOR_RANGE cbvRangePS = {};
+		cbvRangePS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvRangePS.NumDescriptors = 1;
+		cbvRangePS.BaseShaderRegister = 0;
+		cbvRangePS.RegisterSpace = 0;
+		cbvRangePS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+
+		D3D12_ROOT_PARAMETER rootParams[2] = {};
+
+
+		// Define the root parameter for the VERTEX SHADER
+		rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+		rootParams[0].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[0].DescriptorTable.pDescriptorRanges = &cbvRangeVS;
+
+		// Define the root parameter for the PIXEL SHADER
+		rootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		rootParams[1].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvRangePS;
+
+		// Create a single static sampler (available to all pixel shaders)
+		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
+		anisoWrap.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.Filter = D3D12_FILTER_ANISOTROPIC;
+		anisoWrap.MaxAnisotropy = 16;
+		anisoWrap.MaxLOD = D3D12_FLOAT32_MAX;
+		anisoWrap.ShaderRegister = 0; // Means register(s0) in the shader
+		anisoWrap.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		D3D12_STATIC_SAMPLER_DESC samplers[] = { anisoWrap };
+		// Describe the full root signature
 		D3D12_ROOT_SIGNATURE_DESC rootSig = {};
-		rootSig.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-		rootSig.NumParameters = 1;
-		rootSig.pParameters = &rootParam;
-		rootSig.NumStaticSamplers = 0;
-		rootSig.pStaticSamplers = 0;
+		rootSig.Flags =
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+			D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+		rootSig.NumParameters = ARRAYSIZE(rootParams);
+		rootSig.pParameters = rootParams;
+		rootSig.NumStaticSamplers = ARRAYSIZE(samplers);
+		rootSig.pStaticSamplers = samplers;
+
 
 		ID3DBlob* serializedRootSig = 0;
 		ID3DBlob* errors = 0;
@@ -200,6 +236,8 @@ void Game::CreateRootSigAndPipelineState()
 // --------------------------------------------------------
 void Game::CreateGeometry()
 {
+	CreateMaterials();
+
 	std::shared_ptr<Mesh> cube = std::make_shared<Mesh>("Cube", FixPath("../../Assets/Meshes/cube.obj").c_str());
 	std::shared_ptr<Mesh> cylinder = std::make_shared<Mesh>("Cylinder", FixPath("../../Assets/Meshes/cylinder.obj").c_str());
 	std::shared_ptr<Mesh> helix = std::make_shared<Mesh>("Helix", FixPath("../../Assets/Meshes/helix.obj").c_str());
@@ -208,15 +246,62 @@ void Game::CreateGeometry()
 	std::shared_ptr<Mesh> sphere = std::make_shared<Mesh>("Sphere", FixPath("../../Assets/Meshes/sphere.obj").c_str());
 	std::shared_ptr<Mesh> torus = std::make_shared<Mesh>("Torus", FixPath("../../Assets/Meshes/torus.obj").c_str());
 
-	entities.push_back(std::make_shared<Entity>(helix));
-	entities.push_back(std::make_shared<Entity>(sphere));
-	entities.push_back(std::make_shared<Entity>(torus));
+	entities.push_back(std::make_shared<Entity>(helix, wood));
+	entities.push_back(std::make_shared<Entity>(sphere, metal46));
+	entities.push_back(std::make_shared<Entity>(torus, diamond));
 
 	entities[0]->GetTransform()->SetPosition(0, 0, 0);
 
 	entities[1]->GetTransform()->SetPosition(-3, 0, 0);
 
 	entities[2]->GetTransform()->SetPosition(3, 0, 0);
+
+}
+
+void Game::CreateMaterials() 
+{
+	unsigned int woodAlbedo = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/wood_albedo.png").c_str());
+	unsigned int woodNormal = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/wood_normal.png").c_str());
+	unsigned int woodRoughness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/wood_roughness.png").c_str());
+	
+
+	unsigned int diamondAlbedo = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/diamond_albedo.png").c_str());
+	unsigned int diamondNormal = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/diamond_normal.png").c_str());
+	unsigned int diamondRoughness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/diamond_roughness.png").c_str());
+	unsigned int diamondMetalness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/diamond_metalness.png").c_str());
+
+	unsigned int metal46_Albedo = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal46_albedo.png").c_str());
+	unsigned int metal46_Normal = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal46_normal.png").c_str());
+	unsigned int metal46_Roughness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal46_roughness.png").c_str());
+	unsigned int metal46_Metalness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal46_metalness.png").c_str());
+
+	unsigned int metal49_Albedo = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal49_albedo.png").c_str());
+	unsigned int metal49_Normal = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal49_normal.png").c_str());
+	unsigned int metal49_Roughness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal49_roughness.png").c_str());
+	unsigned int metal49_Metalness = Graphics::LoadTexture(FixPath(L"../../Assets/Textures/metal49_metalness.png").c_str());
+
+	wood = std::make_shared<Material>(pipelineState, DirectX::XMFLOAT3(1,1,1));
+	wood->SetAlbedoIndex(woodAlbedo);
+	wood->SetNormalMapIndex(woodNormal);
+	wood->SetRoughnessIndex(woodRoughness);
+
+	diamond = std::make_shared<Material>(pipelineState, DirectX::XMFLOAT3(1, 1, 1));
+	diamond->SetAlbedoIndex(diamondAlbedo);
+	diamond->SetNormalMapIndex(diamondNormal);
+	diamond->SetRoughnessIndex(diamondRoughness);
+	diamond->SetMetalnessIndex(diamondMetalness);
+
+	metal46 = std::make_shared<Material>(pipelineState, DirectX::XMFLOAT3(1, 1, 1));
+	metal46->SetAlbedoIndex(metal46_Albedo);
+	metal46->SetNormalMapIndex(metal46_Normal);
+	metal46->SetRoughnessIndex(metal46_Roughness);
+	metal46->SetMetalnessIndex(metal46_Metalness);
+
+	metal49 = std::make_shared<Material>(pipelineState, DirectX::XMFLOAT3(1, 1, 1));
+	metal49->SetAlbedoIndex(metal49_Albedo);
+	metal49->SetNormalMapIndex(metal49_Normal);
+	metal49->SetRoughnessIndex(metal49_Roughness);
+	metal49->SetMetalnessIndex(metal49_Metalness);
 
 }
 
@@ -312,8 +397,12 @@ void Game::Draw(float deltaTime, float totalTime)
 	
 	// Rendering here!
 	{
-		// Set overall pipeline state
+		// Set overall pipeline state -> prone to change depending on object
 		Graphics::CommandList -> SetPipelineState(pipelineState.Get());
+
+		// Set the CBV/SRV Descriptor Heap -> must happen before root signature
+		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
+
 		// Root sig (must happen before root descriptor table)
 		Graphics::CommandList -> SetGraphicsRootSignature(rootSignature.Get());
 		
@@ -321,7 +410,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		Graphics::CommandList -> OMSetRenderTargets(
 		1, &Graphics::RTVHandles[Graphics::SwapChainIndex()], true , &Graphics::DSVHandle);
 
-		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
+		
 		Graphics::CommandList -> RSSetViewports(1, &viewport);
 		Graphics::CommandList -> RSSetScissorRects(1, &scissorRect);
 		Graphics::CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -330,6 +419,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		{
 			VSConstants vsData = {};
 			vsData.world = e->GetTransform()->GetWorldMatrix();
+			vsData.worldInv = e->GetTransform()->GetWorldInverseTransposeMatrix();
 			vsData.view = camera->GetView();
 			vsData.proj = camera->GetProj();
 
@@ -339,10 +429,26 @@ void Game::Draw(float deltaTime, float totalTime)
 
 			Graphics::CommandList->SetGraphicsRootDescriptorTable(0, vsDataInCBHandle);
 
+			PSConstants psData = {};
+			psData.albedoIndex = e->GetMaterial()->GetAlbedoIndex();
+			psData.normalIndex = e->GetMaterial()->GetNormalMapIndex();
+			psData.roughnessIndex = e->GetMaterial()->GetRoughnessIndex();
+			psData.metalnessIndex = e->GetMaterial()->GetMetalnessIndex();
+			psData.UVOffset = e->GetMaterial()->GetOffset();
+			psData.UVScale = e->GetMaterial()->GetScale();
+			psData.cameraWorldPos = camera->GetPos();
+
+			D3D12_GPU_DESCRIPTOR_HANDLE psDataInCBHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(
+				(void*)&psData, sizeof(PSConstants)
+			);
+
+			Graphics::CommandList->SetGraphicsRootDescriptorTable(1, psDataInCBHandle);
+
 			std::shared_ptr<Mesh> mesh = e->GetMesh();
 			D3D12_VERTEX_BUFFER_VIEW vbView = mesh->GetVBView();
 			D3D12_INDEX_BUFFER_VIEW ibView = mesh->GetIBView();
 
+			Graphics::CommandList->SetPipelineState(e->GetMaterial()->GetPipelineState().Get());
 			Graphics::CommandList->IASetVertexBuffers(0, 1, &vbView);
 			Graphics::CommandList->IASetIndexBuffer(&ibView);
 
@@ -373,9 +479,10 @@ void Game::Draw(float deltaTime, float totalTime)
 			vsync ? 1 : 0,
 			vsync ? 0 : DXGI_PRESENT_ALLOW_TEARING);
 		Graphics::AdvanceSwapChainIndex();
-		// Wait for the GPU to be done and then reset the command list & allocator
-		Graphics::WaitForGPU();
-		Graphics::ResetAllocatorAndCommandList();
+		// Waits for the GPU to be done -> Handled by multi-frame sync in AdvanceSwapChainIndex()!
+		// Resets the command list & allocator
+		// Graphics::WaitForGPU();
+		Graphics::ResetAllocatorAndCommandList(Graphics::SwapChainIndex());
 	}
 }
 

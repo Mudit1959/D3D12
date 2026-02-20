@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <string>
+#include <vector>
 #include <wrl/client.h>
 
 #pragma comment(lib, "d3d12.lib")
@@ -14,12 +15,16 @@ namespace Graphics
 
 	// --- CONSTANTS ---
 	const unsigned int NumBackBuffers = 2;
+	const unsigned int MaxConstantBuffers = 1000;
+	// Maximum number of texture descriptors (SRVs) we can have.
+	const unsigned int MaxTextureDescriptors = 100;
+
 	// --- GLOBAL VARS ---
 	// Primary D3D12 API objects
 	inline Microsoft::WRL::ComPtr <ID3D12Device > Device;
 	inline Microsoft::WRL::ComPtr <IDXGISwapChain > SwapChain;
 	// Command submission
-	inline Microsoft::WRL::ComPtr <ID3D12CommandAllocator > CommandAllocator;
+	inline Microsoft::WRL::ComPtr <ID3D12CommandAllocator > CommandAllocator[NumBackBuffers];
 	inline Microsoft::WRL::ComPtr <ID3D12CommandQueue > CommandQueue;
 	inline Microsoft::WRL::ComPtr <ID3D12GraphicsCommandList > CommandList;
 	// Rendering buffers & descriptors
@@ -33,8 +38,15 @@ namespace Graphics
 	inline Microsoft::WRL::ComPtr <ID3D12Fence > WaitFence;
 	inline HANDLE WaitFenceEvent = 0;
 	inline UINT64 WaitFenceCounter = 0;
+	// Frame Syncing 
+	inline Microsoft::WRL::ComPtr <ID3D12Fence > FrameSyncFence;
+	inline HANDLE FrameSyncFenceEvent = 0;
+	inline UINT64 FrameSyncFenceCounters[NumBackBuffers]{};
 	// Debug Layer
 	inline Microsoft::WRL::ComPtr <ID3D12InfoQueue > InfoQueue;
+
+	
+	
 	
 
 	// --- FUNCTIONS ---
@@ -56,8 +68,12 @@ namespace Graphics
 	// Resource creation
 	Microsoft::WRL::ComPtr <ID3D12Resource > CreateStaticBuffer(
 		size_t dataStride, size_t dataCount, void* data);
+	
+	// Loading textures
+	unsigned int LoadTexture(const wchar_t* file, bool generateMips = true);
+	
 	// Command list & synchronization
-	void ResetAllocatorAndCommandList();
+	void ResetAllocatorAndCommandList(int index);
 	void CloseAndExecuteCommandList();
 	void WaitForGPU();
 

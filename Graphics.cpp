@@ -1,5 +1,7 @@
 #include "Graphics.h"
 #include <dxgi1_6.h>
+#include "WICTextureLoader.h"
+#include "ResourceUploadBatch.h"
 
 // Tell the drivers to use high-performance GPU in multi-GPU systems (like laptops)
 extern "C"
@@ -33,6 +35,10 @@ namespace Graphics
 		void* cbUploadHeapStartAddress = 0;
 
 		D3D12_RANGE range{ 0,0 };
+
+		unsigned int srvDescriptorOffset = MaxConstantBuffers; // Assume SRVs start after CBVs
+		// Texture resources we need to keep alive
+		std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> textures;
 
 	}
 }
@@ -136,10 +142,12 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 	// Set up D3D12 command allocator / queue / list,
 	// which are necessary pieces for issuing standard API calls
 	{
-		// Set up allocator
-		Device -> CreateCommandAllocator(
-			D3D12_COMMAND_LIST_TYPE_DIRECT,
-			IID_PPV_ARGS(CommandAllocator.GetAddressOf()));
+		// Set up allocators - using number of backbuffers and store in array
+		for (int i = 0; i < NumBackBuffers; i++) {
+			Device->CreateCommandAllocator(
+				D3D12_COMMAND_LIST_TYPE_DIRECT,
+				IID_PPV_ARGS(CommandAllocator[i].GetAddressOf()));
+		}
 		// Command queue
 		D3D12_COMMAND_QUEUE_DESC qDesc = {};
 		qDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -149,7 +157,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		Device -> CreateCommandList(
 			0, // Which physical GPU will handle these tasks? 0 for single GPU setup
 			D3D12_COMMAND_LIST_TYPE_DIRECT, // Type of comman d list
-			CommandAllocator.Get(), // The allocator for this list
+			CommandAllocator[0].Get(), // The allocator for this list
 			0, // Initial pipeline state - none for now
 			IID_PPV_ARGS(CommandList.GetAddressOf()));
 	}
@@ -187,6 +195,13 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		WaitFenceEvent = CreateEventEx(0, 0, 0, EVENT_ALL_ACCESS);
 		WaitFenceCounter = 0;
 	}
+
+	// Create fence for multi frame sync
+	{
+		Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(FrameSyncFence.GetAddressOf()));
+		FrameSyncFenceEvent = CreateEventEx(0, 0, 0, EVENT_ALL_ACCESS);
+	}
+
 	// Overall API has been initialized
 	apiInitialized = true;
 
@@ -212,7 +227,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		descHeapDesc.NodeMask = 0;
 		descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		descHeapDesc.NumDescriptors = maxConstantBuffers;
+		descHeapDesc.NumDescriptors = maxConstantBuffers + MaxTextureDescriptors;
 
 		Device->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(CBVSRVDescriptorHeap.GetAddressOf()));
 
@@ -499,14 +514,72 @@ Microsoft::WRL::ComPtr <ID3D12Resource > Graphics::CreateStaticBuffer(
 }
 
 // --------------------------------------------------------
+// Uses the directtk library to load in texture files
+// --------------------------------------------------------
+unsigned int Graphics::LoadTexture(const wchar_t* file, bool generateMips) 
+{
+	// Helper function from DXTK for uploading a resource
+// (like a texture) to the appropriate GPU memory
+	DirectX::ResourceUploadBatch upload(Device.Get());
+	upload.Begin();
+	// Attempt to create the texture
+	Microsoft::WRL::ComPtr <ID3D12Resource > texture;
+	DirectX::CreateWICTextureFromFile(
+		Device.Get(), upload, file, texture.GetAddressOf(), generateMips);
+	// Perform the upload and wait for it to finish before moving on
+	auto finish = upload.End(CommandQueue.Get());
+	finish.wait();
+	// Now that we have the texture, save the ComPtr so it doesn’t get cleaned up
+	textures.push_back(texture);
+	// Save the index of this descriptor and increment the overall offset
+	unsigned int srvIndex = srvDescriptorOffset;
+	srvDescriptorOffset++;
+	
+	// Create the SRV in the descriptor heap at the appropriate offset . When calling
+	// CreateShaderResourceView(), you can use null (zero) for the SRV_DESC param
+	// to get a default SRV that can see all potential subresources of the texture.
+	D3D12_CPU_DESCRIPTOR_HANDLE textureCPUHandle = Graphics::CBVSRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	textureCPUHandle.ptr += srvIndex * cbvSrvDescriptorHeapIncrementSize;
+	Graphics::Device->CreateShaderResourceView(texture.Get(), 0, textureCPUHandle);
+	
+	// Send back the index of the descriptor
+	return srvIndex;
+}
+
+
+// --------------------------------------------------------
 // Advances the swap chain back buffer index by 1, wrapping
 // back to zero when necessary. This should occur after
 // presenting the current frame.
 // --------------------------------------------------------
 void Graphics::AdvanceSwapChainIndex()
 {
-	currentBackBufferIndex++;
-	currentBackBufferIndex %= NumBackBuffers;
+	// Want to wait on a buffer to complete work before switching buffers
+	// Make use of fences
+
+	UINT64 currentFrameFenceCounter = FrameSyncFenceCounters[currentBackBufferIndex];
+	CommandQueue->Signal(FrameSyncFence.Get(), currentFrameFenceCounter); // Have you reached the fence yet?
+
+	// Which buffer is next?
+	unsigned int nextBuffer = currentBackBufferIndex + 1;
+	nextBuffer %= NumBackBuffers; // no overflow
+
+	// For the next render target we are moving to, has the GPU finished all the previous work assigned to it?
+	if (FrameSyncFence->GetCompletedValue() < FrameSyncFenceCounters[nextBuffer]) // if not
+	{
+		// Wait for all the work to be finished
+		FrameSyncFence->SetEventOnCompletion(FrameSyncFenceCounters[nextBuffer], FrameSyncFenceEvent);
+		WaitForSingleObject(FrameSyncFenceEvent, INFINITE);
+	}
+
+	// Once all previous work has been completed, a new fence needs to be set for all the work that will now be assigned
+	// Note : the current frame fence counter is used across different buffers!
+	// 1->4->7	2->5->8  3->6->9
+	FrameSyncFenceCounters[nextBuffer] = currentFrameFenceCounter + 1;
+
+	// Set the current back buffer index to the next buffer we will use
+	currentBackBufferIndex = nextBuffer;
+
 }
 
 // --------------------------------------------------------
@@ -514,11 +587,13 @@ void Graphics::AdvanceSwapChainIndex()
 //
 // Always wait before reseting command allocator, as it should not
 // be reset while the GPU is processing a command list
+// 
+// Takes in an index to reset the correct back buffer/render target
 // --------------------------------------------------------
-void Graphics::ResetAllocatorAndCommandList()
+void Graphics::ResetAllocatorAndCommandList(int swapChainIndex)
 {
-	CommandAllocator -> Reset();
-	CommandList -> Reset(CommandAllocator.Get(), 0);
+	CommandAllocator[swapChainIndex]->Reset();
+	CommandList -> Reset(CommandAllocator[swapChainIndex].Get(), 0);
 }
 
 // --------------------------------------------------------

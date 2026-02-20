@@ -1,5 +1,23 @@
 #include "ShaderInclude.hlsli"
 
+cbuffer PSConstants : register(b0)
+{
+    unsigned int albedoIndex;
+    unsigned int normalIndex;
+    unsigned int roughnessIndex;
+    unsigned int metalnessIndex;
+
+    float2 UVScale;
+    float2 UVOffset;
+
+    float3 cameraWorldPos;
+    int lights;
+
+    Light light[MAX_LIGHTS];
+}
+
+SamplerState BasicSampler : register(s0);
+
 // --------------------------------------------------------
 // The entry point (main method) for our pixel shader
 // 
@@ -11,9 +29,11 @@
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {
+    Texture2D AlbedoTexture = ResourceDescriptorHeap[albedoIndex];
+    
 	// Just return the input color
 	// - This color (like most values passing through the rasterizer) is 
 	//   interpolated for each pixel between the corresponding vertices 
 	//   of the triangle we're rendering
-    return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    return AlbedoTexture.Sample(BasicSampler, input.uv);
 }
