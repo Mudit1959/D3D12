@@ -3,12 +3,15 @@
 #include "WICTextureLoader.h"
 #include "ResourceUploadBatch.h"
 
+
 // Tell the drivers to use high-performance GPU in multi-GPU systems (like laptops)
 extern "C"
 {
 	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; // NVIDIA
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1; // AMD
 }
+
+
 
 namespace Graphics
 {
