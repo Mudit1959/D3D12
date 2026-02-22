@@ -22,8 +22,8 @@ struct PSConstants
 	DirectX::XMFLOAT2 UVOffset;
 
 	DirectX::XMFLOAT3 cameraWorldPos;
-	int lights;
+	int lightCount;
 
-	Light light[MAX_LIGHTS];
+	Light lights[MAX_LIGHTS];
 
 };

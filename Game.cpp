@@ -21,6 +21,13 @@ using namespace DirectX;
 std::vector<std::shared_ptr<Entity>> entities;
 std::shared_ptr<Material> wood, diamond, metal46, metal49;
 std::shared_ptr<Camera> camera;
+unsigned int lightCount = 10;
+
+float RandomRange(float min, float max) 
+{
+	return (float)rand() / RAND_MAX * (max - min) + min;
+}
+
 // --------------------------------------------------------
 // The constructor is called after the window and graphics API
 // are initialized but before the game loop begins
@@ -29,6 +36,7 @@ Game::Game()
 {
 	CreateRootSigAndPipelineState();
 	CreateGeometry();
+	CreateLights();
 	
 
 	camera = std::make_shared<Camera>(0, 0, -10.0f, Window::AspectRatio(), true);
@@ -319,6 +327,37 @@ void Game::CreateMaterials()
 
 }
 
+void Game::CreateLights() 
+{
+	Light redDir = {};
+	redDir.Direction = DirectX::XMFLOAT3(1.0f, 0.0f, 0.0f);
+	redDir.Color = DirectX::XMFLOAT3(1.0f, 0.0f, 0.0f);
+	redDir.Type = LIGHT_TYPE_DIRECTIONAL;
+
+	Light whiteDir = {};
+	whiteDir.Color = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+	whiteDir.Direction = DirectX::XMFLOAT3(0.0f, 0.0f, 1.0f);
+	whiteDir.Type = LIGHT_TYPE_DIRECTIONAL;
+
+	lights.push_back(redDir);
+	lights.push_back(whiteDir);
+
+	
+
+	for (int i = 0; i < 8; i++) 
+	{
+		Light point = {};
+		point.Color = DirectX::XMFLOAT3(RandomRange(0.0f, 1.0f), RandomRange(0.0f, 1.0f), RandomRange(0.0f, 1.0f));
+		point.Position = DirectX::XMFLOAT3(RandomRange(-5.0f, 5.0f), RandomRange(-5.0f, 5.0f), RandomRange(-5.0f, 5.0f));
+		point.Intensity = RandomRange(0.0f, 2.0f);
+		point.Range = RandomRange(0.5f, 8.0f);
+		point.Type = LIGHT_TYPE_POINT;
+
+		lights.push_back(point);
+	}
+
+	lights.resize(MAX_LIGHTS);
+}
 
 // --------------------------------------------------------
 // Handle resizing to match the new window size
@@ -393,8 +432,8 @@ void Game::Draw(float deltaTime, float totalTime)
 		rb.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		rb.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 		Graphics::CommandList -> ResourceBarrier(1, &rb);
-		// Background color (Cornflower Blue in this case) for clearing
-		float color[] = { 0.4f, 0.6f, 0.75f, 1.0f };
+		// Background color (Cornflower Blue in this case) for clearing - { 0.4f, 0.6f, 0.75f, 1.0f };
+		float color[] = { 0,0,0,0 };
 		// Clear the RTV
 		Graphics::CommandList -> ClearRenderTargetView(
 			Graphics::RTVHandles[Graphics::SwapChainIndex()],
@@ -414,17 +453,21 @@ void Game::Draw(float deltaTime, float totalTime)
 		// Set overall pipeline state -> prone to change depending on object
 		Graphics::CommandList -> SetPipelineState(pipelineState.Get());
 
-		// Set the CBV/SRV Descriptor Heap -> must happen before root signature
-		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
-
-		// Now bind the beginning of all the SRVs - partial binding 
-		// Navigate to start of the CBV/SRV buffer -> skip past reserved space for constants to get to textures
-		D3D12_GPU_DESCRIPTOR_HANDLE startInGPU = Graphics::CBVSRVDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
-		startInGPU.ptr += (Graphics::MaxConstantBuffers * Graphics::Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		Graphics::CommandList->SetGraphicsRootDescriptorTable(2, startInGPU);
+		
 
 		// Root sig (must happen before root descriptor table)
 		Graphics::CommandList -> SetGraphicsRootSignature(rootSignature.Get());
+
+		// Set the CBV/SRV Descriptor Heap -> must happen before root signature if using bindless ResourceDescriptorHeap!
+		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
+
+		// Now bind the beginning of all the SRVs using a root descriptor table - partial binding 
+		// Must happen after root signature has been set
+		// Navigate to start of the CBV/SRV buffer -> skip past reserved space for constants to get to textures
+		D3D12_GPU_DESCRIPTOR_HANDLE startInGPU = Graphics::CBVSRVDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+		unsigned int inc = Graphics::Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		startInGPU.ptr += (Graphics::MaxConstantBuffers * inc);
+		Graphics::CommandList->SetGraphicsRootDescriptorTable(2, startInGPU);
 		
 		// Set up other commands for rendering
 		Graphics::CommandList -> OMSetRenderTargets(
@@ -457,6 +500,8 @@ void Game::Draw(float deltaTime, float totalTime)
 			psData.UVOffset = e->GetMaterial()->GetOffset();
 			psData.UVScale = e->GetMaterial()->GetScale();
 			psData.cameraWorldPos = camera->GetPos();
+			psData.lightCount = lightCount;
+			memcpy(&psData.lights, &lights[0], sizeof(Light) * MAX_LIGHTS);
 
 			D3D12_GPU_DESCRIPTOR_HANDLE psDataInCBHandle = Graphics::FillNextConstantBufferAndGetGPUDescriptorHandle(
 				(void*)&psData, sizeof(PSConstants)
@@ -475,9 +520,6 @@ void Game::Draw(float deltaTime, float totalTime)
 			Graphics::CommandList->DrawIndexedInstanced((UINT)mesh->GetIndexCount(), 1, 0, 0, 0);
 		}
 		
-		
-		// Draw
-		Graphics::CommandList -> DrawIndexedInstanced(3, 1, 0, 0, 0);
 	}
 
 	// Present

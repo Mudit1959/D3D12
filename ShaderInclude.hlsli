@@ -50,7 +50,6 @@ struct Light
 
     float SpotInnerAngle; // Inner cone angle (in radians) – Inside this, full light!
     float SpotOuterAngle; // Outer cone angle (radians) – Outside this, no light!
-    float3 Padding; // Purposefully padding to hit the 16-byte boundary
 };
 
 // -- PBR -- 
@@ -111,4 +110,11 @@ float3 CookTorranceBRDF(float3 toLight, float3 toCamera, float3 halfVector, floa
 float3 DiffuseEnergyConserve(float3 diffuse, float3 F, float metalness)
 {
     return diffuse * (1 - F) * (1 - metalness);
+}
+
+float Attenuate(Light light, float3 surfaceWorldPos)
+{
+    float dist = distance(light.Position, surfaceWorldPos);
+    float att = saturate(1.0f - (dist * dist / (light.Range * light.Range)));
+    return att * att;
 }

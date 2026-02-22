@@ -4,6 +4,7 @@
 #include <wrl/client.h>
 #include "Camera.h"
 #include "Material.h"
+#include "Light.h"
 
 class Game
 {
@@ -19,12 +20,15 @@ public:
 	void Draw(float deltaTime, float totalTime);
 	void OnResize();
 
+	std::vector<Light> lights;
+
 private:
 
 	// Initialization helper methods - feel free to customize, combine, remove, etc.
 	void CreateRootSigAndPipelineState();
 	void CreateGeometry();
 	void CreateMaterials();
+	void CreateLights();
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the
