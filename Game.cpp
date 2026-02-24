@@ -116,6 +116,7 @@ void Game::CreateRootSigAndPipelineState()
 		cbvRangePS.RegisterSpace = 0;
 		cbvRangePS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+		/* Old Bindless
 		// Define root parameter to access an unbounded space for TEXTURES in PIXEL SHADER
 		D3D12_DESCRIPTOR_RANGE bindlessRange{};
 		bindlessRange.BaseShaderRegister = 0; // Matches t0 in shader
@@ -123,9 +124,10 @@ void Game::CreateRootSigAndPipelineState()
 		bindlessRange.NumDescriptors = -1; // All (or Graphics::MaxTextureDescriptors)
 		bindlessRange.OffsetInDescriptorsFromTableStart = 0;
 		bindlessRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		*/
 
 
-		D3D12_ROOT_PARAMETER rootParams[3] = {};
+		D3D12_ROOT_PARAMETER rootParams[2] = {};
 
 
 		// Define the pointer to a descriptor table for the VERTEX SHADER
@@ -140,11 +142,12 @@ void Game::CreateRootSigAndPipelineState()
 		rootParams[1].DescriptorTable.NumDescriptorRanges = 1;
 		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvRangePS;
 
-		// Define the pointer to a descriptor table for TEXTURES in the PIXEL SHADER
+		/* Old Bindless - Define the pointer to a descriptor table for TEXTURES in the PIXEL SHADER
 		rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 		rootParams[2].DescriptorTable.NumDescriptorRanges = 1;
 		rootParams[2].DescriptorTable.pDescriptorRanges = &bindlessRange;
+		*/
 
 		// Create a single static sampler (available to all pixel shaders)
 		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
@@ -161,7 +164,7 @@ void Game::CreateRootSigAndPipelineState()
 		// Describe the full root signature
 		D3D12_ROOT_SIGNATURE_DESC rootSig = {};
 		rootSig.Flags =
-			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
 		rootSig.NumParameters = ARRAYSIZE(rootParams);
 		rootSig.pParameters = rootParams;
 		rootSig.NumStaticSamplers = ARRAYSIZE(samplers);
@@ -453,14 +456,15 @@ void Game::Draw(float deltaTime, float totalTime)
 		// Set overall pipeline state -> prone to change depending on object
 		Graphics::CommandList -> SetPipelineState(pipelineState.Get());
 
-		
+		// Set the CBV/SRV Descriptor Heap -> must happen before root signature if using bindless ResourceDescriptorHeap!
+		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
 
 		// Root sig (must happen before root descriptor table)
 		Graphics::CommandList -> SetGraphicsRootSignature(rootSignature.Get());
 
-		// Set the CBV/SRV Descriptor Heap -> must happen before root signature if using bindless ResourceDescriptorHeap!
-		Graphics::CommandList->SetDescriptorHeaps(1, Graphics::CBVSRVDescriptorHeap.GetAddressOf());
+		
 
+		/* Old Bindless
 		// Now bind the beginning of all the SRVs using a root descriptor table - partial binding 
 		// Must happen after root signature has been set
 		// Navigate to start of the CBV/SRV buffer -> skip past reserved space for constants to get to textures
@@ -468,6 +472,7 @@ void Game::Draw(float deltaTime, float totalTime)
 		unsigned int inc = Graphics::Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 		startInGPU.ptr += (Graphics::MaxConstantBuffers * inc);
 		Graphics::CommandList->SetGraphicsRootDescriptorTable(2, startInGPU);
+		*/
 		
 		// Set up other commands for rendering
 		Graphics::CommandList -> OMSetRenderTargets(

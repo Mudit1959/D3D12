@@ -2,7 +2,6 @@
 
 //Texture2D AllTextures[ ] : register(t0, space0);
 
-
 cbuffer PSConstants : register(b0)
 {
     unsigned int albedoIndex;
@@ -32,6 +31,8 @@ SamplerState BasicSampler : register(s0);
 // --------------------------------------------------------
 float4 main(VertexToPixel input) : SV_TARGET
 {
+    Texture2D Albedo = ResourceDescriptorHeap[albedoIndex];
+    
     /*
     Texture2D Albedo = AllTextures[albedoIndex];
     Texture2D NormalMap = AllTextures[NormalMap];
@@ -145,5 +146,5 @@ float4 main(VertexToPixel input) : SV_TARGET
     
     
     
-    return float4(lights[3].Color, 1.0f);
+    return Albedo.Sample(BasicSampler, input.uv);
 }

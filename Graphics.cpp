@@ -9,6 +9,9 @@ extern "C"
 {
 	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; // NVIDIA
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1; // AMD
+
+	__declspec(dllexport) extern const UINT D3D12SDKVersion = 618;
+	__declspec(dllexport) extern const char8_t* D3D12SDKPath = u8".\\D3D12\\";
 }
 
 
@@ -222,7 +225,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 
 	ResizeBuffers(windowWidth, windowHeight);
 
-	// Create Descriptor Heap
+	// Create Descriptor Heap to store views for constant buffer VIEWS AND shader resource VIEWS -> VIEWS POINT TO CONSTANT BUFFER DATA OR SHADER RESOURCES
 	{
 		cbvSrvDescriptorHeapIncrementSize = (SIZE_T)Graphics::Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -244,7 +247,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 
 		cbUploadHeapOffsetInBytes = 0;
 		
-		// Describes the final heap
+		// Describes the final heap properties
 		D3D12_HEAP_PROPERTIES constantProps = {};
 		constantProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 		constantProps.CreationNodeMask = 1;
@@ -252,6 +255,7 @@ HRESULT Graphics::Initialize(unsigned int windowWidth, unsigned int windowHeight
 		constantProps.Type = D3D12_HEAP_TYPE_UPLOAD;
 		constantProps.VisibleNodeMask = 1;
 
+		// Describes the final heap description
 		D3D12_RESOURCE_DESC constDesc = {};
 		constDesc.Alignment = 0;
 		constDesc.DepthOrArraySize = 1;
@@ -522,9 +526,10 @@ Microsoft::WRL::ComPtr <ID3D12Resource > Graphics::CreateStaticBuffer(
 unsigned int Graphics::LoadTexture(const wchar_t* file, bool generateMips) 
 {
 	// Helper function from DXTK for uploading a resource
-// (like a texture) to the appropriate GPU memory
+	// (like a texture) to the appropriate GPU memory
 	DirectX::ResourceUploadBatch upload(Device.Get());
 	upload.Begin();
+	
 	// Attempt to create the texture
 	Microsoft::WRL::ComPtr <ID3D12Resource > texture;
 	DirectX::CreateWICTextureFromFile(
@@ -532,6 +537,7 @@ unsigned int Graphics::LoadTexture(const wchar_t* file, bool generateMips)
 	// Perform the upload and wait for it to finish before moving on
 	auto finish = upload.End(CommandQueue.Get());
 	finish.wait();
+	
 	// Now that we have the texture, save the ComPtr so it doesn’t get cleaned up
 	textures.push_back(texture);
 	// Save the index of this descriptor and increment the overall offset

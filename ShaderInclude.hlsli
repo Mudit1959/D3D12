@@ -13,11 +13,17 @@ struct VertexToPixel
     float4 screenPosition : SV_POSITION;
     
     float2 uv : TEXCOORD;
-    float3 normal : NORMAL;
+    //padded with 2 floats
     
-    float3 worldPos : POSITION;
+    float3 normal : NORMAL;
+    // padded with 1 float
     
     float3 tangent : TANGENT;
+    // padded with 1 float
+    
+    float3 worldPos : POSITION;
+    // padded with 1 float
+    
 };
 
 //Random value
